@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "House Scorer",
+  "version": "0.1.0",
+  "description": "Scores property listings on ImmobilienScout24 based on your criteria",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://www.immobilienscout24.de/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.immobilienscout24.de/Suche/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "House Scorer"
+  }
+}

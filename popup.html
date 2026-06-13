@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 420px; font-family: Arial, sans-serif; padding: 12px; margin: 0; }
+    h1 { font-size: 16px; margin: 0 0 8px; }
+    #status { color: #666; font-size: 12px; margin-bottom: 8px; }
+    button { padding: 6px 14px; cursor: pointer; margin-right: 6px; }
+    .listing { border: 1px solid #ddd; border-radius: 4px; padding: 8px; margin-bottom: 8px; font-size: 12px; }
+    .listing h3 { margin: 0 0 4px; font-size: 13px; }
+    .listing .detail { color: #555; margin: 2px 0; }
+    .listing .price { color: #0066cc; font-weight: bold; }
+    .listing a { color: #0066cc; }
+    .energy-high { color: #16a34a; font-weight: bold; }
+    #count { font-weight: bold; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>House Scorer</h1>
+  <div id="status">Click "Scan Listings" to extract property data.</div>
+  <button id="scanBtn">Scan Listings</button>
+  <button id="clearBtn">Clear</button>
+  <div id="count"></div>
+  <div id="results"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
