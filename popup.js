@@ -49,8 +49,13 @@ function displayResults(data) {
   let html = '';
   data.listings.forEach(l => {
     const isHighEff = l.energyClass === 'A' || l.energyClass === 'B';
+    const scoreColor = l.score > 0 ? '#2563eb' : '#9ca3af';
     html += `<div class="listing">
-      <h3>${l.title || 'No title'}</h3>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;">${l.score}</span>
+        <h3 style="margin:0;">${l.title || 'No title'}</h3>
+      </div>
+      ${l.matchedLocation ? `<div class="detail"><strong>Location match:</strong> ${l.matchedLocation}</div>` : ''}
       ${l.badge ? `<div class="detail"><strong>Badge:</strong> ${l.badge}</div>` : ''}
       ${l.address ? `<div class="detail"><strong>Address:</strong> ${l.address}</div>` : ''}
       ${l.price ? `<div class="detail price">${l.price}</div>` : ''}

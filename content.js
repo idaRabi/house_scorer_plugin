@@ -1,5 +1,68 @@
+function getConfig() {
+  return window.houseScorerConfig || {
+    locationScores: {},
+    missingLocationScore: 0
+  };
+}
+
+function computeScore(listing) {
+  var config = getConfig();
+  var score = 0;
+  var matchedLocation = null;
+
+  if (listing.address) {
+    var addrLower = listing.address.toLowerCase();
+    var locations = config.locationScores;
+    for (var loc in locations) {
+      if (locations.hasOwnProperty(loc) && addrLower.indexOf(loc.toLowerCase()) !== -1) {
+        score += locations[loc];
+        matchedLocation = loc;
+        break;
+      }
+    }
+    if (!matchedLocation) {
+      score += config.missingLocationScore;
+    }
+  } else {
+    score += config.missingLocationScore;
+  }
+
+  return { total: score, matchedLocation: matchedLocation };
+}
+
+function addScoreBadge(card, score) {
+  var existing = card.querySelector('.house-scorer-score');
+  if (existing) existing.remove();
+
+  var badge = document.createElement('div');
+  badge.className = 'house-scorer-score';
+  badge.title = 'House Scorer rating';
+  badge.style.position = 'absolute';
+  badge.style.top = '8px';
+  badge.style.left = '8px';
+  badge.style.zIndex = '10';
+  badge.style.minWidth = '28px';
+  badge.style.height = '28px';
+  badge.style.borderRadius = '14px';
+  badge.style.padding = '0 8px';
+  badge.style.background = score > 0 ? '#2563eb' : '#9ca3af';
+  badge.style.color = '#fff';
+  badge.style.display = 'flex';
+  badge.style.alignItems = 'center';
+  badge.style.justifyContent = 'center';
+  badge.style.fontSize = '14px';
+  badge.style.fontWeight = 'bold';
+  badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.25)';
+  badge.style.boxSizing = 'border-box';
+  badge.style.lineHeight = '28px';
+  badge.textContent = score;
+
+  card.style.position = 'relative';
+  card.appendChild(badge);
+}
+
 function addEnergyBadges() {
-  const cards = document.querySelectorAll('.listing-card[data-obid]');
+  var cards = document.querySelectorAll('.listing-card[data-obid]');
   cards.forEach(function (card) {
     if (card.querySelector('.house-scorer-badge')) return;
 
@@ -33,6 +96,16 @@ function addEnergyBadges() {
   });
 }
 
+function scoreAndMarkAll() {
+  var cards = document.querySelectorAll('.listing-card[data-obid]');
+  cards.forEach(function (card) {
+    var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
+    var address = addressEl ? addressEl.textContent.trim() : null;
+    var result = computeScore({ address: address });
+    addScoreBadge(card, result.total);
+  });
+}
+
 function extractListings() {
   var listings = [];
   var cards = document.querySelectorAll('.listing-card[data-obid]');
@@ -45,6 +118,7 @@ function extractListings() {
     var obid = card.getAttribute('data-obid');
     var titleEl = card.querySelector('[data-testid="headline"]');
     var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
+    var address = addressEl ? addressEl.textContent.trim() : null;
     var attributesContainer = card.querySelector('[data-testid="attributes"]');
     var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
 
@@ -66,20 +140,24 @@ function extractListings() {
     var energyClass = energyEl ? energyEl.textContent.trim() : null;
 
     var badgeEl = card.querySelector('.indicator span');
-    var badge2 = badgeEl ? badgeEl.textContent.trim() : null;
+    var badgeText = badgeEl ? badgeEl.textContent.trim() : null;
 
     var attrSection = card.querySelector('[data-testid="attributeSection"]');
     var linkEl = attrSection ? attrSection.closest('a') : null;
 
+    var scoreResult = computeScore({ address: address });
+
     listings.push({
       obid: obid,
       title: titleEl ? titleEl.textContent.trim() : null,
-      address: addressEl ? addressEl.textContent.trim() : null,
+      address: address,
       price: price,
       area: area,
       rooms: rooms,
       energyClass: energyClass,
-      badge: badge2,
+      badge: badgeText,
+      score: scoreResult.total,
+      matchedLocation: scoreResult.matchedLocation,
       link: linkEl ? linkEl.href : null
     });
   });
@@ -87,8 +165,7 @@ function extractListings() {
   return { count: listings.length, listings: listings };
 }
 
-try {
-  addEnergyBadges();
-} catch (e) {}
+try { addEnergyBadges(); } catch (e) {}
+scoreAndMarkAll();
 
 window.houseScorer = { extractListings: extractListings };
