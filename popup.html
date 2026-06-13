@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 420px; font-family: Arial, sans-serif; padding: 12px; margin: 0; }
+    body { width: 460px; font-family: Arial, sans-serif; padding: 12px; margin: 0; }
     h1 { font-size: 16px; margin: 0 0 8px; }
     #status { color: #666; font-size: 12px; margin-bottom: 8px; }
     button { padding: 6px 14px; cursor: pointer; margin-right: 6px; }
@@ -14,6 +14,11 @@
     .listing a { color: #0066cc; }
     .energy-high { color: #16a34a; font-weight: bold; }
     #count { font-weight: bold; color: #333; }
+    #exposeView { display: none; }
+    #exposeResults { margin-top: 8px; }
+    .expose-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 12px; }
+    .expose-label { color: #888; font-weight: bold; min-width: 160px; }
+    .expose-value { color: #333; text-align: right; flex: 1; }
   </style>
 </head>
 <body>
@@ -23,6 +28,9 @@
   <button id="clearBtn">Clear</button>
   <div id="count"></div>
   <div id="results"></div>
+  <div id="exposeView">
+    <div id="exposeResults"></div>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

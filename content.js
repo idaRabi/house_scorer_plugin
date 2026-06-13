@@ -1,71 +1,72 @@
-function getConfig() {
-  return window.houseScorerConfig || {
-    locationScores: {},
-    missingLocationScore: 0,
-    energyScores: {},
-    roomScores: {}
-  };
+var SCORE_SERVER = 'http://localhost:3001';
+
+function fetchScore(obid, data) {
+  return fetch(SCORE_SERVER + '/score/' + obid, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  .then(function (res) {
+    if (!res.ok) throw new Error('Server error: ' + res.status);
+    return res.json();
+  })
+  .catch(function () {
+    return { id: obid, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null };
+  });
 }
 
-function computeScore(listing) {
-  var config = getConfig();
-  var locationScore = 0;
-  var energyScore = 0;
-  var roomScore = 0;
-  var matchedLocation = null;
+function extractListingData(card) {
+  var obid = card.getAttribute('data-obid');
+  var titleEl = card.querySelector('[data-testid="headline"]');
+  var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
+  var attributesContainer = card.querySelector('[data-testid="attributes"]');
+  var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
 
-  if (listing.address) {
-    var addrLower = listing.address.toLowerCase();
-    var locations = config.locationScores;
-    for (var loc in locations) {
-      if (locations.hasOwnProperty(loc) && addrLower.indexOf(loc.toLowerCase()) !== -1) {
-        locationScore = locations[loc];
-        matchedLocation = loc;
-        break;
-      }
+  var price = null;
+  var area = null;
+  var rooms = null;
+  ddEls.forEach(function (dd) {
+    var text = dd.textContent.trim();
+    if (text.indexOf('\u20AC') !== -1) {
+      price = text;
+    } else if (text.indexOf('m\u00B2') !== -1) {
+      area = text;
+    } else if (text.indexOf('Zi.') !== -1) {
+      rooms = text;
     }
-    if (!matchedLocation) {
-      locationScore = config.missingLocationScore;
-    }
-  } else {
-    locationScore = config.missingLocationScore;
-  }
+  });
 
-  if (listing.energyClass && config.energyScores) {
-    var ecScore = config.energyScores[listing.energyClass];
-    if (typeof ecScore === 'number') {
-      energyScore = ecScore;
-    }
-  }
+  var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
+  var energyClass = energyEl ? energyEl.textContent.trim() : null;
 
-  if (listing.rooms && config.roomScores) {
-    var roomMatch = listing.rooms.match(/(\d+)/);
-    if (roomMatch) {
-      var roomCount = roomMatch[1];
-      var rcScore = config.roomScores[roomCount];
-      if (typeof rcScore === 'number') {
-        roomScore = rcScore;
-      }
-    }
-  }
+  var badgeEl = card.querySelector('.indicator span');
+  var badgeText = badgeEl ? badgeEl.textContent.trim() : null;
 
-  var total = locationScore + energyScore + roomScore;
+  var attrSection = card.querySelector('[data-testid="attributeSection"]');
+  var linkEl = attrSection ? attrSection.closest('a') : null;
+
   return {
-    total: total,
-    matchedLocation: matchedLocation,
-    locationScore: locationScore,
-    energyScore: energyScore,
-    roomScore: roomScore
+    obid: obid,
+    title: titleEl ? titleEl.textContent.trim() : null,
+    address: addressEl ? addressEl.textContent.trim() : null,
+    price: price,
+    area: area,
+    rooms: rooms,
+    energyClass: energyClass,
+    badge: badgeText,
+    link: linkEl ? linkEl.href : null
   };
 }
 
-function addScoreBadge(card, result) {
+function addScoreBadge(card, serverResult) {
   var existing = card.querySelector('.house-scorer-score');
   if (existing) existing.remove();
   var existingTip = card.querySelector('.house-scorer-tooltip');
   if (existingTip) existingTip.remove();
 
-  var score = result.total;
+  var score = serverResult.score;
+  var bd = serverResult.breakdown;
+  var locLabel = serverResult.matchedLocation || 'other';
 
   var badge = document.createElement('div');
   badge.className = 'house-scorer-score';
@@ -107,12 +108,11 @@ function addScoreBadge(card, result) {
   tooltip.style.whiteSpace = 'nowrap';
   tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
 
-  var locationLabel = result.matchedLocation ? result.matchedLocation : 'other';
   tooltip.innerHTML =
-    '<div style="margin-bottom:4px;"><b>Score: ' + result.total + '</b></div>' +
-    '<div>Location (' + locationLabel + '): +' + result.locationScore + '</div>' +
-    '<div>Energy: +' + result.energyScore + '</div>' +
-    '<div>Rooms: +' + result.roomScore + '</div>';
+    '<div style="margin-bottom:4px;"><b>Score: ' + score + '</b></div>' +
+    '<div>Location (' + locLabel + '): ' + (bd.location >= 0 ? '+' : '') + bd.location + '</div>' +
+    '<div>Energy: ' + (bd.energy >= 0 ? '+' : '') + bd.energy + '</div>' +
+    '<div>Rooms: ' + (bd.rooms >= 0 ? '+' : '') + bd.rooms + '</div>';
 
   badge.addEventListener('mouseenter', function () {
     tooltip.style.display = 'block';
@@ -130,10 +130,7 @@ function addEnergyBadges() {
   var cards = document.querySelectorAll('.listing-card[data-obid]');
   cards.forEach(function (card) {
     if (card.querySelector('.house-scorer-badge')) return;
-
-    var energyLabel =
-      card.querySelector('.eec-label-A, .eec-label-B');
-
+    var energyLabel = card.querySelector('.eec-label-A, .eec-label-B');
     if (!energyLabel) return;
 
     var badge = document.createElement('div');
@@ -163,128 +160,145 @@ function addEnergyBadges() {
 
 function scoreAndMarkAll() {
   var cards = document.querySelectorAll('.listing-card[data-obid]');
+  var promises = [];
   cards.forEach(function (card) {
-    var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
-    var address = addressEl ? addressEl.textContent.trim() : null;
-    var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
-    var energyClass = energyEl ? energyEl.textContent.trim() : null;
-    var attributesContainer = card.querySelector('[data-testid="attributes"]');
-    var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
-    var rooms = null;
-    ddEls.forEach(function (dd) {
-      var text = dd.textContent.trim();
-      if (text.indexOf('Zi.') !== -1) {
-        rooms = text;
-      }
+    var data = extractListingData(card);
+    var p = fetchScore(data.obid, {
+      address: data.address,
+      rooms: data.rooms,
+      energyCertificate: data.energyClass
+    }).then(function (result) {
+      addScoreBadge(card, result);
     });
-    var result = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
-    addScoreBadge(card, result);
+    promises.push(p);
   });
-}
-
-function extractListings() {
-  var listings = [];
-  var cards = document.querySelectorAll('.listing-card[data-obid]');
-
-  if (cards.length === 0) {
-    return { error: 'No listing cards found on this page.', count: 0, listings: [] };
-  }
-
-  cards.forEach(function (card) {
-    var obid = card.getAttribute('data-obid');
-    var titleEl = card.querySelector('[data-testid="headline"]');
-    var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
-    var address = addressEl ? addressEl.textContent.trim() : null;
-    var attributesContainer = card.querySelector('[data-testid="attributes"]');
-    var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
-
-    var price = null;
-    var area = null;
-    var rooms = null;
-    ddEls.forEach(function (dd) {
-      var text = dd.textContent.trim();
-      if (text.indexOf('\u20AC') !== -1) {
-        price = text;
-      } else if (text.indexOf('m\u00B2') !== -1) {
-        area = text;
-      } else if (text.indexOf('Zi.') !== -1) {
-        rooms = text;
-      }
-    });
-
-    var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
-    var energyClass = energyEl ? energyEl.textContent.trim() : null;
-
-    var badgeEl = card.querySelector('.indicator span');
-    var badgeText = badgeEl ? badgeEl.textContent.trim() : null;
-
-    var attrSection = card.querySelector('[data-testid="attributeSection"]');
-    var linkEl = attrSection ? attrSection.closest('a') : null;
-
-    var scoreResult = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
-
-    listings.push({
-      obid: obid,
-      title: titleEl ? titleEl.textContent.trim() : null,
-      address: address,
-      price: price,
-      area: area,
-      rooms: rooms,
-      energyClass: energyClass,
-      badge: badgeText,
-      score: scoreResult.total,
-      matchedLocation: scoreResult.matchedLocation,
-      locationScore: scoreResult.locationScore,
-      energyScore: scoreResult.energyScore,
-      roomScore: scoreResult.roomScore,
-      link: linkEl ? linkEl.href : null
-    });
-  });
-
-  return { count: listings.length, listings: listings };
+  return Promise.all(promises);
 }
 
 function sortByScore() {
   var cards = document.querySelectorAll('.listing-card[data-obid]');
-  if (cards.length < 2) return;
+  if (cards.length < 2) return Promise.resolve();
 
   var container = cards[0].parentElement;
-  if (!container) return;
+  if (!container) return Promise.resolve();
 
-  var scored = [];
+  var promises = [];
   cards.forEach(function (card) {
-    var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
-    var address = addressEl ? addressEl.textContent.trim() : null;
-    var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
-    var energyClass = energyEl ? energyEl.textContent.trim() : null;
-    var attributesContainer = card.querySelector('[data-testid="attributes"]');
-    var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
-    var rooms = null;
-    ddEls.forEach(function (dd) {
-      var text = dd.textContent.trim();
-      if (text.indexOf('Zi.') !== -1) {
-        rooms = text;
-      }
+    var data = extractListingData(card);
+    var p = fetchScore(data.obid, {
+      address: data.address,
+      rooms: data.rooms,
+      energyCertificate: data.energyClass
+    }).then(function (result) {
+      return { card: card, score: result.score };
     });
-    var result = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
-    scored.push({ card: card, score: result.total });
+    promises.push(p);
   });
 
-  scored.sort(function (a, b) { return b.score - a.score; });
-
-  var fragment = document.createDocumentFragment();
-  scored.forEach(function (item) {
-    fragment.appendChild(item.card);
+  return Promise.all(promises).then(function (scored) {
+    scored.sort(function (a, b) { return b.score - a.score; });
+    var fragment = document.createDocumentFragment();
+    scored.forEach(function (item) {
+      fragment.appendChild(item.card);
+    });
+    container.appendChild(fragment);
   });
-  container.appendChild(fragment);
+}
+
+function extractExposeData() {
+  var data = {};
+
+  var etageEl = document.querySelector('.is24qa-etage');
+  if (etageEl) data.floor = etageEl.textContent.trim();
+
+  var hausgeldEl = document.querySelector('.is24qa-hausgeld');
+  if (hausgeldEl) data.hausgeld = hausgeldEl.textContent.trim();
+
+  var baujahrEl = document.querySelector('.is24qa-baujahr');
+  if (baujahrEl) data.baujahr = baujahrEl.textContent.trim();
+
+  var zustandEl = document.querySelector('.is24qa-objektzustand');
+  if (zustandEl) data.objektzustand = zustandEl.textContent.trim();
+
+  var ausstattungEl = document.querySelector('.is24qa-qualitaet-der-ausstattung');
+  if (ausstattungEl) data.ausstattung = ausstattungEl.textContent.trim();
+
+  var heizungEl = document.querySelector('.is24qa-heizungsart');
+  if (heizungEl) data.heizungsart = heizungEl.textContent.trim();
+
+  var energietraegerEl = document.querySelector('.is24qa-wesentliche-energietraeger');
+  if (energietraegerEl) data.energietraeger = energietraegerEl.textContent.trim();
+
+  var energieausweisEl = document.querySelector('.is24qa-energieausweis');
+  if (energieausweisEl) data.energieausweis = energieausweisEl.textContent.trim();
+
+  var ausweistypEl = document.querySelector('.is24qa-energieausweistyp');
+  if (ausweistypEl) data.energieausweistyp = ausweistypEl.textContent.trim();
+
+  var baujahrEAEl = document.querySelector('.is24qa-baujahr-laut-energieausweis');
+  if (baujahrEAEl) data.baujahrEnergieausweis = baujahrEAEl.textContent.trim();
+
+  var endenergieEl = document.querySelector('.is24qa-endenergiebedarf');
+  if (endenergieEl) data.endenergiebedarf = endenergieEl.textContent.trim();
+
+  var eecImg = document.querySelector('.is24qa-energieeffizienzklasse img');
+  if (eecImg) data.energieeffizienzklasse = eecImg.alt;
+
+  return data;
+}
+
+function isExposePage() {
+  return window.location.pathname.indexOf('/expose/') !== -1;
+}
+
+function extractListings() {
+  var cards = document.querySelectorAll('.listing-card[data-obid]');
+  if (cards.length === 0) {
+    return Promise.resolve({ error: 'No listing cards found on this page.', count: 0, listings: [] });
+  }
+
+  var promises = [];
+  cards.forEach(function (card) {
+    var data = extractListingData(card);
+    var p = fetchScore(data.obid, {
+      address: data.address,
+      rooms: data.rooms,
+      energyCertificate: data.energyClass
+    }).then(function (result) {
+      return {
+        obid: data.obid,
+        title: data.title,
+        address: data.address,
+        price: data.price,
+        area: data.area,
+        rooms: data.rooms,
+        energyClass: data.energyClass,
+        badge: data.badge,
+        score: result.score,
+        matchedLocation: result.matchedLocation,
+        locationScore: result.breakdown.location,
+        energyScore: result.breakdown.energy,
+        roomScore: result.breakdown.rooms,
+        link: data.link
+      };
+    });
+    promises.push(p);
+  });
+
+  return Promise.all(promises).then(function (listings) {
+    return { count: listings.length, listings: listings };
+  });
 }
 
 function sortAndMark() {
-  sortByScore();
-  try { addEnergyBadges(); } catch (e) {}
-  scoreAndMarkAll();
+  return sortByScore().then(function () {
+    try { addEnergyBadges(); } catch (e) {}
+    return scoreAndMarkAll();
+  });
 }
 
-sortAndMark();
+if (!isExposePage()) {
+  sortAndMark();
+}
 
-window.houseScorer = { extractListings: extractListings, sortAndMark: sortAndMark };
+window.houseScorer = { extractListings: extractListings, sortAndMark: sortAndMark, extractExposeData: extractExposeData, isExposePage: isExposePage };
