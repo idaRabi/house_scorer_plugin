@@ -1,7 +1,9 @@
 function getConfig() {
   return window.houseScorerConfig || {
     locationScores: {},
-    missingLocationScore: 0
+    missingLocationScore: 0,
+    energyScores: {},
+    roomScores: {}
   };
 }
 
@@ -25,6 +27,24 @@ function computeScore(listing) {
     }
   } else {
     score += config.missingLocationScore;
+  }
+
+  if (listing.energyClass && config.energyScores) {
+    var ecScore = config.energyScores[listing.energyClass];
+    if (typeof ecScore === 'number') {
+      score += ecScore;
+    }
+  }
+
+  if (listing.rooms && config.roomScores) {
+    var roomMatch = listing.rooms.match(/(\d+)/);
+    if (roomMatch) {
+      var roomCount = roomMatch[1];
+      var rcScore = config.roomScores[roomCount];
+      if (typeof rcScore === 'number') {
+        score += rcScore;
+      }
+    }
   }
 
   return { total: score, matchedLocation: matchedLocation };
@@ -101,7 +121,18 @@ function scoreAndMarkAll() {
   cards.forEach(function (card) {
     var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
     var address = addressEl ? addressEl.textContent.trim() : null;
-    var result = computeScore({ address: address });
+    var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
+    var energyClass = energyEl ? energyEl.textContent.trim() : null;
+    var attributesContainer = card.querySelector('[data-testid="attributes"]');
+    var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
+    var rooms = null;
+    ddEls.forEach(function (dd) {
+      var text = dd.textContent.trim();
+      if (text.indexOf('Zi.') !== -1) {
+        rooms = text;
+      }
+    });
+    var result = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
     addScoreBadge(card, result.total);
   });
 }
@@ -145,7 +176,7 @@ function extractListings() {
     var attrSection = card.querySelector('[data-testid="attributeSection"]');
     var linkEl = attrSection ? attrSection.closest('a') : null;
 
-    var scoreResult = computeScore({ address: address });
+    var scoreResult = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
 
     listings.push({
       obid: obid,
