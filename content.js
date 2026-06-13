@@ -9,7 +9,9 @@ function getConfig() {
 
 function computeScore(listing) {
   var config = getConfig();
-  var score = 0;
+  var locationScore = 0;
+  var energyScore = 0;
+  var roomScore = 0;
   var matchedLocation = null;
 
   if (listing.address) {
@@ -17,22 +19,22 @@ function computeScore(listing) {
     var locations = config.locationScores;
     for (var loc in locations) {
       if (locations.hasOwnProperty(loc) && addrLower.indexOf(loc.toLowerCase()) !== -1) {
-        score += locations[loc];
+        locationScore = locations[loc];
         matchedLocation = loc;
         break;
       }
     }
     if (!matchedLocation) {
-      score += config.missingLocationScore;
+      locationScore = config.missingLocationScore;
     }
   } else {
-    score += config.missingLocationScore;
+    locationScore = config.missingLocationScore;
   }
 
   if (listing.energyClass && config.energyScores) {
     var ecScore = config.energyScores[listing.energyClass];
     if (typeof ecScore === 'number') {
-      score += ecScore;
+      energyScore = ecScore;
     }
   }
 
@@ -42,25 +44,35 @@ function computeScore(listing) {
       var roomCount = roomMatch[1];
       var rcScore = config.roomScores[roomCount];
       if (typeof rcScore === 'number') {
-        score += rcScore;
+        roomScore = rcScore;
       }
     }
   }
 
-  return { total: score, matchedLocation: matchedLocation };
+  var total = locationScore + energyScore + roomScore;
+  return {
+    total: total,
+    matchedLocation: matchedLocation,
+    locationScore: locationScore,
+    energyScore: energyScore,
+    roomScore: roomScore
+  };
 }
 
-function addScoreBadge(card, score) {
+function addScoreBadge(card, result) {
   var existing = card.querySelector('.house-scorer-score');
   if (existing) existing.remove();
+  var existingTip = card.querySelector('.house-scorer-tooltip');
+  if (existingTip) existingTip.remove();
+
+  var score = result.total;
 
   var badge = document.createElement('div');
   badge.className = 'house-scorer-score';
-  badge.title = 'House Scorer rating';
   badge.style.position = 'absolute';
   badge.style.top = '8px';
   badge.style.left = '8px';
-  badge.style.zIndex = '10';
+  badge.style.zIndex = '11';
   badge.style.minWidth = '28px';
   badge.style.height = '28px';
   badge.style.borderRadius = '14px';
@@ -75,10 +87,43 @@ function addScoreBadge(card, score) {
   badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.25)';
   badge.style.boxSizing = 'border-box';
   badge.style.lineHeight = '28px';
+  badge.style.cursor = 'pointer';
   badge.textContent = score;
+
+  var tooltip = document.createElement('div');
+  tooltip.className = 'house-scorer-tooltip';
+  tooltip.style.display = 'none';
+  tooltip.style.position = 'absolute';
+  tooltip.style.top = '40px';
+  tooltip.style.left = '8px';
+  tooltip.style.zIndex = '20';
+  tooltip.style.background = '#1f2937';
+  tooltip.style.color = '#f9fafb';
+  tooltip.style.padding = '8px 12px';
+  tooltip.style.borderRadius = '6px';
+  tooltip.style.fontSize = '13px';
+  tooltip.style.fontFamily = 'Arial, sans-serif';
+  tooltip.style.lineHeight = '1.5';
+  tooltip.style.whiteSpace = 'nowrap';
+  tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+
+  var locationLabel = result.matchedLocation ? result.matchedLocation : 'other';
+  tooltip.innerHTML =
+    '<div style="margin-bottom:4px;"><b>Score: ' + result.total + '</b></div>' +
+    '<div>Location (' + locationLabel + '): +' + result.locationScore + '</div>' +
+    '<div>Energy: +' + result.energyScore + '</div>' +
+    '<div>Rooms: +' + result.roomScore + '</div>';
+
+  badge.addEventListener('mouseenter', function () {
+    tooltip.style.display = 'block';
+  });
+  badge.addEventListener('mouseleave', function () {
+    tooltip.style.display = 'none';
+  });
 
   card.style.position = 'relative';
   card.appendChild(badge);
+  card.appendChild(tooltip);
 }
 
 function addEnergyBadges() {
@@ -133,7 +178,7 @@ function scoreAndMarkAll() {
       }
     });
     var result = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
-    addScoreBadge(card, result.total);
+    addScoreBadge(card, result);
   });
 }
 
@@ -189,6 +234,9 @@ function extractListings() {
       badge: badgeText,
       score: scoreResult.total,
       matchedLocation: scoreResult.matchedLocation,
+      locationScore: scoreResult.locationScore,
+      energyScore: scoreResult.energyScore,
+      roomScore: scoreResult.roomScore,
       link: linkEl ? linkEl.href : null
     });
   });
@@ -196,7 +244,47 @@ function extractListings() {
   return { count: listings.length, listings: listings };
 }
 
-try { addEnergyBadges(); } catch (e) {}
-scoreAndMarkAll();
+function sortByScore() {
+  var cards = document.querySelectorAll('.listing-card[data-obid]');
+  if (cards.length < 2) return;
 
-window.houseScorer = { extractListings: extractListings };
+  var container = cards[0].parentElement;
+  if (!container) return;
+
+  var scored = [];
+  cards.forEach(function (card) {
+    var addressEl = card.querySelector('[data-testid="hybridViewAddress"]');
+    var address = addressEl ? addressEl.textContent.trim() : null;
+    var energyEl = card.querySelector('.eec-label-A, .eec-label-B, .eec-label-C, .eec-label-D, .eec-label-E, .eec-label-F, .eec-label-G, .eec-label-H');
+    var energyClass = energyEl ? energyEl.textContent.trim() : null;
+    var attributesContainer = card.querySelector('[data-testid="attributes"]');
+    var ddEls = attributesContainer ? attributesContainer.querySelectorAll('dd') : [];
+    var rooms = null;
+    ddEls.forEach(function (dd) {
+      var text = dd.textContent.trim();
+      if (text.indexOf('Zi.') !== -1) {
+        rooms = text;
+      }
+    });
+    var result = computeScore({ address: address, energyClass: energyClass, rooms: rooms });
+    scored.push({ card: card, score: result.total });
+  });
+
+  scored.sort(function (a, b) { return b.score - a.score; });
+
+  var fragment = document.createDocumentFragment();
+  scored.forEach(function (item) {
+    fragment.appendChild(item.card);
+  });
+  container.appendChild(fragment);
+}
+
+function sortAndMark() {
+  sortByScore();
+  try { addEnergyBadges(); } catch (e) {}
+  scoreAndMarkAll();
+}
+
+sortAndMark();
+
+window.houseScorer = { extractListings: extractListings, sortAndMark: sortAndMark };

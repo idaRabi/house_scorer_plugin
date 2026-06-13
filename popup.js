@@ -6,8 +6,13 @@ document.getElementById('scanBtn').addEventListener('click', async () => {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
-        if (window.houseScorer && typeof window.houseScorer.extractListings === 'function') {
-          return window.houseScorer.extractListings();
+        if (window.houseScorer) {
+          if (typeof window.houseScorer.sortAndMark === 'function') {
+            window.houseScorer.sortAndMark();
+          }
+          if (typeof window.houseScorer.extractListings === 'function') {
+            return window.houseScorer.extractListings();
+          }
         }
         return { error: 'Content script not loaded. Try refreshing the page.' };
       }
@@ -50,9 +55,11 @@ function displayResults(data) {
   data.listings.forEach(l => {
     const isHighEff = l.energyClass === 'A' || l.energyClass === 'B';
     const scoreColor = l.score > 0 ? '#2563eb' : '#9ca3af';
+    const locationLabel = l.matchedLocation || 'other';
+    const breakdown = `Score: ${l.score}\nLocation (${locationLabel}): +${l.locationScore || 0}\nEnergy: +${l.energyScore || 0}\nRooms: +${l.roomScore || 0}`;
     html += `<div class="listing">
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;">${l.score}</span>
+        <span title="${breakdown}" style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">${l.score}</span>
         <h3 style="margin:0;">${l.title || 'No title'}</h3>
       </div>
       ${l.matchedLocation ? `<div class="detail"><strong>Location match:</strong> ${l.matchedLocation}</div>` : ''}
