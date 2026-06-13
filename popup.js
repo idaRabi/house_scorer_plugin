@@ -1,5 +1,4 @@
 var scanBtn = document.getElementById('scanBtn');
-var exposeView = document.getElementById('exposeView');
 
 function isExposeUrl(url) {
   return url && url.indexOf('/expose/') !== -1;
@@ -9,7 +8,7 @@ chrome.tabs.query({ active: true, currentWindow: true }).then(function (tabs) {
   var tab = tabs[0];
   if (tab && isExposeUrl(tab.url)) {
     scanBtn.textContent = 'Extract Expose Data';
-    exposeView.style.display = 'block';
+    document.getElementById('status').textContent = 'Expose scoring runs automatically. Click to re-fetch.';
   }
 });
 
@@ -18,7 +17,27 @@ scanBtn.addEventListener('click', async () => {
   if (!tab) return;
 
   if (isExposeUrl(tab.url)) {
-    extractExpose(tab);
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          if (window.houseScorer && typeof window.houseScorer.extractExposeData === 'function') {
+            return window.houseScorer.extractExposeData();
+          }
+          return { error: 'Content script not loaded. Try refreshing the page.' };
+        }
+      });
+      const data = results[0].result;
+      if (data.error) {
+        document.getElementById('status').textContent = data.error;
+        document.getElementById('results').innerHTML = '';
+        return;
+      }
+      displayExposeData(data);
+      document.getElementById('status').textContent = 'Expose data re-extracted.';
+    } catch (err) {
+      document.getElementById('status').textContent = 'Error: ' + err.message;
+    }
     return;
   }
 
@@ -53,43 +72,21 @@ scanBtn.addEventListener('click', async () => {
   }
 });
 
-async function extractExpose(tab) {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => {
-        if (window.houseScorer && typeof window.houseScorer.extractExposeData === 'function') {
-          return window.houseScorer.extractExposeData();
-        }
-        return { error: 'Content script not loaded. Try refreshing the page.' };
-      }
-    });
-
-    const data = results[0].result;
-    if (data.error) {
-      document.getElementById('status').textContent = data.error;
-      return;
-    }
-    displayExposeData(data);
-  } catch (err) {
-    document.getElementById('status').textContent = 'Error: ' + err.message;
-  }
-}
-
 function displayExposeData(data) {
   var fields = [
+    { key: 'address', label: 'Address' },
     { key: 'floor', label: 'Etage' },
-    { key: 'hausgeld', label: 'Hausgeld' },
-    { key: 'baujahr', label: 'Baujahr' },
-    { key: 'objektzustand', label: 'Objektzustand' },
+    { key: 'maintenanceFee', label: 'Hausgeld' },
+    { key: 'constructionYear', label: 'Baujahr' },
+    { key: 'condition', label: 'Objektzustand' },
     { key: 'ausstattung', label: 'Ausstattung' },
-    { key: 'heizungsart', label: 'Heizungsart' },
-    { key: 'energietraeger', label: 'Wesentliche Energietrager' },
-    { key: 'energieausweis', label: 'Energieausweis' },
-    { key: 'energieausweistyp', label: 'Energieausweistyp' },
+    { key: 'heatingType', label: 'Heizungsart' },
+    { key: 'primaryEnergySource', label: 'Wesentliche Energietrager' },
+    { key: 'energyCertificateStatus', label: 'Energieausweis' },
+    { key: 'energyCertificateType', label: 'Energieausweistyp' },
     { key: 'baujahrEnergieausweis', label: 'Baujahr lt. Energieausweis' },
     { key: 'endenergiebedarf', label: 'Endenergiebedarf' },
-    { key: 'energieeffizienzklasse', label: 'Energieeffizienzklasse' }
+    { key: 'energyCertificate', label: 'Energieklasse' }
   ];
 
   var hasAny = false;
@@ -102,18 +99,16 @@ function displayExposeData(data) {
   });
 
   if (!hasAny) {
-    document.getElementById('status').textContent = 'No expose data found on this page.';
+    document.getElementById('results').innerHTML = '<p>No expose data found on this page.</p>';
     return;
   }
 
-  document.getElementById('status').textContent = 'Expose data extracted.';
-  document.getElementById('exposeResults').innerHTML = html;
+  document.getElementById('results').innerHTML = html;
 }
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('results').innerHTML = '';
   document.getElementById('count').textContent = '';
-  document.getElementById('exposeResults').innerHTML = '';
   document.getElementById('status').textContent = 'Cleared.';
 });
 

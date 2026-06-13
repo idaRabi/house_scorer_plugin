@@ -1,10 +1,22 @@
 var SCORE_SERVER = 'http://localhost:3001';
 
 function fetchScore(obid, data) {
-  return fetch(SCORE_SERVER + '/score/' + obid, {
+  return fetch(SCORE_SERVER + '/expose-score/' + obid, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    body: JSON.stringify({
+      address: data.address,
+      rooms: data.rooms,
+      energyCertificate: data.energyCertificate,
+      floor: data.floor || null,
+      maintenanceFee: data.maintenanceFee || null,
+      constructionYear: data.constructionYear || null,
+      condition: data.condition || null,
+      heatingType: data.heatingType || null,
+      primaryEnergySource: data.primaryEnergySource || null,
+      energyCertificateStatus: data.energyCertificateStatus || null,
+      energyCertificateType: data.energyCertificateType || null
+    })
   })
   .then(function (res) {
     if (!res.ok) throw new Error('Server error: ' + res.status);
@@ -208,32 +220,46 @@ function sortByScore() {
 function extractExposeData() {
   var data = {};
 
+  var pathParts = window.location.pathname.split('/');
+  data.exposeId = pathParts[pathParts.length - 1];
+
+  if (window.IS24 && window.IS24.expose && window.IS24.expose.locationAddress) {
+    var loc = window.IS24.expose.locationAddress;
+    data.address = loc.street + ' ' + loc.houseNumber + ', ' + loc.zip + ' ' + loc.city;
+  }
+
+  var roomsEl = document.querySelector('.is24qa-zimmer');
+  if (roomsEl) data.rooms = roomsEl.textContent.trim();
+
+  var eecImg = document.querySelector('.is24qa-energieeffizienzklasse img');
+  if (eecImg) data.energyCertificate = eecImg.alt;
+
   var etageEl = document.querySelector('.is24qa-etage');
   if (etageEl) data.floor = etageEl.textContent.trim();
 
   var hausgeldEl = document.querySelector('.is24qa-hausgeld');
-  if (hausgeldEl) data.hausgeld = hausgeldEl.textContent.trim();
+  if (hausgeldEl) data.maintenanceFee = hausgeldEl.textContent.trim();
 
   var baujahrEl = document.querySelector('.is24qa-baujahr');
-  if (baujahrEl) data.baujahr = baujahrEl.textContent.trim();
+  if (baujahrEl) data.constructionYear = baujahrEl.textContent.trim();
 
   var zustandEl = document.querySelector('.is24qa-objektzustand');
-  if (zustandEl) data.objektzustand = zustandEl.textContent.trim();
+  if (zustandEl) data.condition = zustandEl.textContent.trim();
 
   var ausstattungEl = document.querySelector('.is24qa-qualitaet-der-ausstattung');
   if (ausstattungEl) data.ausstattung = ausstattungEl.textContent.trim();
 
   var heizungEl = document.querySelector('.is24qa-heizungsart');
-  if (heizungEl) data.heizungsart = heizungEl.textContent.trim();
+  if (heizungEl) data.heatingType = heizungEl.textContent.trim();
 
   var energietraegerEl = document.querySelector('.is24qa-wesentliche-energietraeger');
-  if (energietraegerEl) data.energietraeger = energietraegerEl.textContent.trim();
+  if (energietraegerEl) data.primaryEnergySource = energietraegerEl.textContent.trim();
 
   var energieausweisEl = document.querySelector('.is24qa-energieausweis');
-  if (energieausweisEl) data.energieausweis = energieausweisEl.textContent.trim();
+  if (energieausweisEl) data.energyCertificateStatus = energieausweisEl.textContent.trim();
 
   var ausweistypEl = document.querySelector('.is24qa-energieausweistyp');
-  if (ausweistypEl) data.energieausweistyp = ausweistypEl.textContent.trim();
+  if (ausweistypEl) data.energyCertificateType = ausweistypEl.textContent.trim();
 
   var baujahrEAEl = document.querySelector('.is24qa-baujahr-laut-energieausweis');
   if (baujahrEAEl) data.baujahrEnergieausweis = baujahrEAEl.textContent.trim();
@@ -241,10 +267,86 @@ function extractExposeData() {
   var endenergieEl = document.querySelector('.is24qa-endenergiebedarf');
   if (endenergieEl) data.endenergiebedarf = endenergieEl.textContent.trim();
 
-  var eecImg = document.querySelector('.is24qa-energieeffizienzklasse img');
-  if (eecImg) data.energieeffizienzklasse = eecImg.alt;
-
   return data;
+}
+
+function fetchExposeScore(data) {
+  return fetch(SCORE_SERVER + '/expose-score/' + data.exposeId, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: data.address,
+      rooms: data.rooms,
+      energyCertificate: data.energyCertificate,
+      floor: data.floor,
+      maintenanceFee: data.maintenanceFee,
+      constructionYear: data.constructionYear,
+      condition: data.condition,
+      heatingType: data.heatingType,
+      primaryEnergySource: data.primaryEnergySource,
+      energyCertificateStatus: data.energyCertificateStatus,
+      energyCertificateType: data.energyCertificateType
+    })
+  })
+  .then(function (res) {
+    if (!res.ok) throw new Error('Server error: ' + res.status);
+    return res.json();
+  })
+  .catch(function () {
+    return { id: data.exposeId, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, input: data };
+  });
+}
+
+function addExposeScoreOverlay(result) {
+  var existing = document.querySelector('.house-scorer-expose-overlay');
+  if (existing) existing.remove();
+
+  var score = result.score;
+  var bd = result.breakdown;
+  var locLabel = result.matchedLocation || 'other';
+
+  var overlay = document.createElement('div');
+  overlay.className = 'house-scorer-expose-overlay';
+  overlay.style.position = 'fixed';
+  overlay.style.bottom = '16px';
+  overlay.style.right = '16px';
+  overlay.style.zIndex = '9999';
+  overlay.style.background = '#1f2937';
+  overlay.style.color = '#f9fafb';
+  overlay.style.padding = '12px 16px';
+  overlay.style.borderRadius = '8px';
+  overlay.style.fontFamily = 'Arial, sans-serif';
+  overlay.style.fontSize = '13px';
+  overlay.style.lineHeight = '1.6';
+  overlay.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
+  overlay.style.maxWidth = '280px';
+
+  var scoreColor = score > 0 ? '#2563eb' : '#9ca3af';
+  var sign = function (v) { return v >= 0 ? '+' : ''; };
+
+  overlay.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<span style="background:' + scoreColor + ';color:#fff;border-radius:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;">' + score + '</span>' +
+      '<b style="font-size:14px;">House Score</b>' +
+    '</div>' +
+    '<div>Location (' + locLabel + '): ' + sign(bd.location) + bd.location + '</div>' +
+    '<div>Energy: ' + sign(bd.energy) + bd.energy + '</div>' +
+    '<div>Rooms: ' + sign(bd.rooms) + bd.rooms + '</div>';
+
+  document.body.appendChild(overlay);
+
+  setTimeout(function () {
+    overlay.style.opacity = '0.85';
+    overlay.style.transition = 'opacity 0.5s';
+  }, 100);
+}
+
+function autoScoreExpose() {
+  var data = extractExposeData();
+  if (!data.exposeId) return;
+  fetchExposeScore(data).then(function (result) {
+    addExposeScoreOverlay(result);
+  });
 }
 
 function isExposePage() {
@@ -297,7 +399,9 @@ function sortAndMark() {
   });
 }
 
-if (!isExposePage()) {
+if (isExposePage()) {
+  autoScoreExpose();
+} else {
   sortAndMark();
 }
 
