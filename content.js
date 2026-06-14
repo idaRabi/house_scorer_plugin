@@ -1,7 +1,7 @@
 var SCORE_SERVER = 'http://localhost:3001';
 
 function fetchScore(obid, data) {
-  return fetch(SCORE_SERVER + '/expose-score/' + obid, {
+  return fetch(SCORE_SERVER + '/score/' + obid, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
