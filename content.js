@@ -16,7 +16,8 @@ function fetchScore(obid, data) {
       primaryEnergySource: data.primaryEnergySource || null,
       energyCertificateStatus: data.energyCertificateStatus || null,
       energyCertificateType: data.energyCertificateType || null,
-      hasElevator: data.hasElevator || null
+      hasElevator: data.hasElevator || null,
+      area: data.area || null
     })
   })
   .then(function (res) {
@@ -24,7 +25,7 @@ function fetchScore(obid, data) {
     return res.json();
   })
   .catch(function () {
-    return { id: obid, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null };
+    return { id: obid, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, explanation: {} };
   });
 }
 
@@ -78,8 +79,6 @@ function addScoreBadge(card, serverResult) {
   if (existingTip) existingTip.remove();
 
   var score = serverResult.score;
-  var bd = serverResult.breakdown;
-  var locLabel = serverResult.matchedLocation || 'other';
 
   var badge = document.createElement('div');
   badge.className = 'house-scorer-score';
@@ -118,14 +117,20 @@ function addScoreBadge(card, serverResult) {
   tooltip.style.fontSize = '13px';
   tooltip.style.fontFamily = 'Arial, sans-serif';
   tooltip.style.lineHeight = '1.5';
-  tooltip.style.whiteSpace = 'nowrap';
   tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
 
+  var expl = serverResult.explanation || {};
+  var explLines = '';
+  if (expl.location) explLines += '<div>' + expl.location + '</div>';
+  if (expl.energy) explLines += '<div>' + expl.energy + '</div>';
+  if (expl.rooms) explLines += '<div>' + expl.rooms + '</div>';
+  if (expl.accessibility) explLines += '<div>' + expl.accessibility + '</div>';
+  if (expl.construction) explLines += '<div>' + expl.construction + '</div>';
+  if (expl.heatingType) explLines += '<div>' + expl.heatingType + '</div>';
+  if (expl.maintenanceFee) explLines += '<div>' + expl.maintenanceFee + '</div>';
+
   tooltip.innerHTML =
-    '<div style="margin-bottom:4px;"><b>Score: ' + score + '</b></div>' +
-    '<div>Location (' + locLabel + '): ' + (bd.location >= 0 ? '+' : '') + bd.location + '</div>' +
-    '<div>Energy: ' + (bd.energy >= 0 ? '+' : '') + bd.energy + '</div>' +
-    '<div>Rooms: ' + (bd.rooms >= 0 ? '+' : '') + bd.rooms + '</div>';
+    '<div style="margin-bottom:4px;"><b>Score: ' + score + '</b></div>' + explLines;
 
   badge.addEventListener('mouseenter', function () {
     tooltip.style.display = 'block';
@@ -179,7 +184,8 @@ function scoreAndMarkAll() {
     var p = fetchScore(data.obid, {
       address: data.address,
       rooms: data.rooms,
-      energyCertificate: data.energyClass
+      energyCertificate: data.energyClass,
+      area: data.area
     }).then(function (result) {
       addScoreBadge(card, result);
     });
@@ -201,7 +207,8 @@ function sortByScore() {
     var p = fetchScore(data.obid, {
       address: data.address,
       rooms: data.rooms,
-      energyCertificate: data.energyClass
+      energyCertificate: data.energyClass,
+      area: data.area
     }).then(function (result) {
       return { card: card, score: result.score };
     });
@@ -274,6 +281,9 @@ function extractExposeData() {
     data.hasElevator = !!indicator;
   }
 
+  var areaEl = document.querySelector('.is24qa-wohnflaeche-ca');
+  if (areaEl) data.area = areaEl.textContent.trim();
+
   return data;
 }
 
@@ -293,7 +303,8 @@ function fetchExposeScore(data) {
       primaryEnergySource: data.primaryEnergySource,
       energyCertificateStatus: data.energyCertificateStatus,
       energyCertificateType: data.energyCertificateType,
-      hasElevator: data.hasElevator || null
+      hasElevator: data.hasElevator || null,
+      area: data.area
     })
   })
   .then(function (res) {
@@ -310,8 +321,17 @@ function addExposeScoreOverlay(result) {
   if (existing) existing.remove();
 
   var score = result.score;
-  var bd = result.breakdown;
-  var locLabel = result.matchedLocation || 'other';
+  var scoreColor = score > 0 ? '#2563eb' : '#9ca3af';
+
+  var expl = result.explanation || {};
+  var explLines = '';
+  if (expl.location) explLines += '<div>' + expl.location + '</div>';
+  if (expl.energy) explLines += '<div>' + expl.energy + '</div>';
+  if (expl.rooms) explLines += '<div>' + expl.rooms + '</div>';
+  if (expl.accessibility) explLines += '<div>' + expl.accessibility + '</div>';
+  if (expl.construction) explLines += '<div>' + expl.construction + '</div>';
+  if (expl.heatingType) explLines += '<div>' + expl.heatingType + '</div>';
+  if (expl.maintenanceFee) explLines += '<div>' + expl.maintenanceFee + '</div>';
 
   var overlay = document.createElement('div');
   overlay.className = 'house-scorer-expose-overlay';
@@ -327,19 +347,13 @@ function addExposeScoreOverlay(result) {
   overlay.style.fontSize = '13px';
   overlay.style.lineHeight = '1.6';
   overlay.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
-  overlay.style.maxWidth = '280px';
-
-  var scoreColor = score > 0 ? '#2563eb' : '#9ca3af';
-  var sign = function (v) { return v >= 0 ? '+' : ''; };
+  overlay.style.maxWidth = '300px';
 
   overlay.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
       '<span style="background:' + scoreColor + ';color:#fff;border-radius:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;">' + score + '</span>' +
       '<b style="font-size:14px;">House Score</b>' +
-    '</div>' +
-    '<div>Location (' + locLabel + '): ' + sign(bd.location) + bd.location + '</div>' +
-    '<div>Energy: ' + sign(bd.energy) + bd.energy + '</div>' +
-    '<div>Rooms: ' + sign(bd.rooms) + bd.rooms + '</div>';
+    '</div>' + explLines;
 
   document.body.appendChild(overlay);
 
@@ -373,7 +387,8 @@ function extractListings() {
     var p = fetchScore(data.obid, {
       address: data.address,
       rooms: data.rooms,
-      energyCertificate: data.energyClass
+      energyCertificate: data.energyClass,
+      area: data.area
     }).then(function (result) {
       return {
         obid: data.obid,
@@ -389,6 +404,7 @@ function extractListings() {
         locationScore: result.breakdown.location,
         energyScore: result.breakdown.energy,
         roomScore: result.breakdown.rooms,
+        explanation: result.explanation,
         link: data.link
       };
     });

@@ -136,12 +136,18 @@ function displayResults(data) {
   data.listings.forEach(l => {
     const isHighEff = l.energyClass === 'A' || l.energyClass === 'B';
     const scoreColor = l.score > 0 ? '#2563eb' : '#9ca3af';
-    const locationLabel = l.matchedLocation || 'other';
-    const locScore = l.locationScore || 0;
-    const enScore = l.energyScore || 0;
-    const rmScore = l.roomScore || 0;
-    const sign = function (v) { return v >= 0 ? '+' : ''; };
-    const breakdown = 'Score: ' + l.score + '\nLocation (' + locationLabel + '): ' + sign(locScore) + locScore + '\nEnergy: ' + sign(enScore) + enScore + '\nRooms: ' + sign(rmScore) + rmScore;
+    var explLines = '';
+    if (l.explanation) {
+      var expl = l.explanation;
+      if (expl.location) explLines += '\n' + expl.location;
+      if (expl.energy) explLines += '\n' + expl.energy;
+      if (expl.rooms) explLines += '\n' + expl.rooms;
+      if (expl.accessibility) explLines += '\n' + expl.accessibility;
+      if (expl.construction) explLines += '\n' + expl.construction;
+      if (expl.heatingType) explLines += '\n' + expl.heatingType;
+      if (expl.maintenanceFee) explLines += '\n' + expl.maintenanceFee;
+    }
+    const breakdown = 'Score: ' + l.score + explLines;
     html += `<div class="listing">
       <div style="display:flex;align-items:center;gap:8px;">
         <span title="${breakdown}" style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">${l.score}</span>
