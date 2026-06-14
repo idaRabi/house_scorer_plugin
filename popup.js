@@ -2,6 +2,7 @@ var SCORE_SERVER = 'http://localhost:3001';
 var MAX_TABS = 15;
 var WINDOW_MINUTES = 5;
 var GAP_MS = 20000;
+var BATCH_SIZE = 5;
 
 function loadConfigFromPage(tab) {
   return chrome.scripting.executeScript({
@@ -11,7 +12,8 @@ function loadConfigFromPage(tab) {
       return {
         maxTabsPerWindow: cfg.maxTabsPerWindow || 15,
         tabWindowMinutes: cfg.tabWindowMinutes || 5,
-        tabOpenGapSeconds: cfg.tabOpenGapSeconds || 20
+        tabOpenGapSeconds: cfg.tabOpenGapSeconds || 20,
+        batchSize: cfg.batchSize || 5
       };
     }
   }).then(function (results) {
@@ -19,6 +21,7 @@ function loadConfigFromPage(tab) {
     MAX_TABS = c.maxTabsPerWindow;
     WINDOW_MINUTES = c.tabWindowMinutes;
     GAP_MS = c.tabOpenGapSeconds * 1000;
+    BATCH_SIZE = c.batchSize;
   });
 }
 
@@ -126,7 +129,8 @@ async function scanSearchPage(searchTab) {
     config: {
       maxTabsPerWindow: MAX_TABS,
       tabWindowMinutes: WINDOW_MINUTES,
-      tabOpenGapSeconds: GAP_MS / 1000
+      tabOpenGapSeconds: GAP_MS / 1000,
+      batchSize: BATCH_SIZE
     },
     searchTabId: searchTab.id
   });

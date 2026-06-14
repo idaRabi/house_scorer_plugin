@@ -17,35 +17,36 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 async function openExposes(listings, config, searchTabId) {
   var maxTabs = config.maxTabsPerWindow || 15;
   var gapMs = (config.tabOpenGapSeconds || 20) * 1000;
+  var batchSize = config.batchSize || 5;
 
   var totalToOpen = Math.min(listings.length, maxTabs);
-  var openedTabs = [];
+  var idx = 0;
 
-  for (var i = 0; i < totalToOpen; i++) {
-    try {
-      var tab = await chrome.tabs.create({ url: listings[i].link, active: false });
-      openedTabs.push({ id: tab.id, obid: listings[i].obid });
-      console.log('[HouseScorer] Opened tab ' + (i + 1) + '/' + totalToOpen + ': ' + listings[i].obid);
-    } catch (e) {
-      console.error('[HouseScorer] Tab creation error:', e);
+  while (idx < totalToOpen) {
+    var batchEnd = Math.min(idx + batchSize, totalToOpen);
+    var batchTabs = [];
+
+    for (var i = idx; i < batchEnd; i++) {
+      try {
+        var tab = await chrome.tabs.create({ url: listings[i].link, active: false });
+        batchTabs.push({ id: tab.id, obid: listings[i].obid });
+        console.log('[HouseScorer] Opened ' + (i + 1) + '/' + totalToOpen + ': ' + listings[i].obid);
+      } catch (e) {
+        console.error('[HouseScorer] Tab creation error:', e);
+      }
     }
-    if (i < totalToOpen - 1) {
-      await delay(gapMs);
-    }
-  }
 
-  console.log('[HouseScorer] All ' + openedTabs.length + ' tabs opened. Waiting 45s for pages to load...');
-  await delay(45000);
+    console.log('[HouseScorer] Batch ' + (idx + 1) + '-' + batchEnd + ': waiting 15s for pages to load...');
+    await delay(15000);
 
-  for (var j = 0; j < openedTabs.length; j++) {
-    try {
-      var results = await chrome.scripting.executeScript({
-        target: { tabId: openedTabs[j].id },
-        func: scoreExposePage
-      });
-      var data = results[0].result;
-      if (data && data.exposeId) {
-        try {
+    for (var j = 0; j < batchTabs.length; j++) {
+      try {
+        var results = await chrome.scripting.executeScript({
+          target: { tabId: batchTabs[j].id },
+          func: scoreExposePage
+        });
+        var data = results[0].result;
+        if (data && data.exposeId) {
           var res = await fetch(SCORE_SERVER + '/expose-score/' + data.exposeId, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -67,24 +68,25 @@ async function openExposes(listings, config, searchTabId) {
               longitude: data.longitude || null
             })
           });
-          console.log('[HouseScorer] Score POST for ' + data.exposeId + ': ' + res.status);
-        } catch (e) {
-          console.error('[HouseScorer] Score POST failed for ' + data.exposeId + ':', e.message);
+          console.log('[HouseScorer] Scored ' + data.exposeId + ': ' + res.status);
         }
+      } catch (e) {
+        console.error('[HouseScorer] Error processing ' + batchTabs[j].obid + ':', e.message);
       }
-    } catch (e) {
-      console.error('[HouseScorer] Tab ' + openedTabs[j].obid + ' injection failed:', e.message);
+    }
+
+    for (var k = 0; k < batchTabs.length; k++) {
+      try { chrome.tabs.remove(batchTabs[k].id); } catch (e) {}
+    }
+
+    idx = batchEnd;
+    if (idx < totalToOpen) {
+      console.log('[HouseScorer] Waiting ' + (gapMs / 1000) + 's before next batch...');
+      await delay(gapMs);
     }
   }
 
-  console.log('[HouseScorer] Closing ' + openedTabs.length + ' tabs...');
-  for (var k = 0; k < openedTabs.length; k++) {
-    try { chrome.tabs.remove(openedTabs[k].id); } catch (e) {}
-  }
-
-  console.log('[HouseScorer] Triggering re-sort on search tab ' + searchTabId);
-  await delay(2000);
-
+  console.log('[HouseScorer] Done. Triggering re-sort on search tab ' + searchTabId);
   try {
     await chrome.scripting.executeScript({
       target: { tabId: searchTabId },
@@ -96,7 +98,7 @@ async function openExposes(listings, config, searchTabId) {
     });
     console.log('[HouseScorer] Resort triggered');
   } catch (e) {
-    console.error('[HouseScorer] Resort injection failed:', e.message);
+    console.error('[HouseScorer] Resort failed:', e.message);
   }
 }
 

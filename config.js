@@ -26,6 +26,7 @@ window.houseScorerConfig = {
 
   maxTabsPerWindow: 15,
   tabWindowMinutes: 5,
-  tabOpenGapSeconds: 20
+  tabOpenGapSeconds: 20,
+  batchSize: 5
 
 };
