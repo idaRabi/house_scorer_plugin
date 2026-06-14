@@ -15,7 +15,8 @@ function fetchScore(obid, data) {
       heatingType: data.heatingType || null,
       primaryEnergySource: data.primaryEnergySource || null,
       energyCertificateStatus: data.energyCertificateStatus || null,
-      energyCertificateType: data.energyCertificateType || null
+      energyCertificateType: data.energyCertificateType || null,
+      hasElevator: data.hasElevator || null
     })
   })
   .then(function (res) {
@@ -267,6 +268,12 @@ function extractExposeData() {
   var endenergieEl = document.querySelector('.is24qa-endenergiebedarf');
   if (endenergieEl) data.endenergiebedarf = endenergieEl.textContent.trim();
 
+  var liftLabel = document.querySelector('[data-qa="is24qa-lift-label"]');
+  if (liftLabel) {
+    var indicator = liftLabel.querySelector('[data-testid="indicator-container"]');
+    data.hasElevator = !!indicator;
+  }
+
   return data;
 }
 
@@ -285,7 +292,8 @@ function fetchExposeScore(data) {
       heatingType: data.heatingType,
       primaryEnergySource: data.primaryEnergySource,
       energyCertificateStatus: data.energyCertificateStatus,
-      energyCertificateType: data.energyCertificateType
+      energyCertificateType: data.energyCertificateType,
+      hasElevator: data.hasElevator || null
     })
   })
   .then(function (res) {
