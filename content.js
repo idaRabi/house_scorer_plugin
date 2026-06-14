@@ -161,38 +161,6 @@ function addScoreBadge(card, serverResult) {
   card.appendChild(tooltip);
 }
 
-function addEnergyBadges() {
-  var cards = document.querySelectorAll('.listing-card[data-obid]');
-  cards.forEach(function (card) {
-    if (card.querySelector('.house-scorer-badge')) return;
-    var energyLabel = card.querySelector('.eec-label-A, .eec-label-B');
-    if (!energyLabel) return;
-
-    var badge = document.createElement('div');
-    badge.className = 'house-scorer-badge';
-    badge.title = 'High energy efficiency';
-    badge.style.position = 'absolute';
-    badge.style.top = '8px';
-    badge.style.right = '8px';
-    badge.style.zIndex = '10';
-    badge.style.width = '28px';
-    badge.style.height = '28px';
-    badge.style.borderRadius = '50%';
-    badge.style.background = '#16a34a';
-    badge.style.color = '#fff';
-    badge.style.display = 'flex';
-    badge.style.alignItems = 'center';
-    badge.style.justifyContent = 'center';
-    badge.style.fontSize = '18px';
-    badge.style.fontWeight = 'bold';
-    badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.25)';
-    badge.textContent = '\u2713';
-
-    card.style.position = 'relative';
-    card.appendChild(badge);
-  });
-}
-
 function scoreAndMarkAll() {
   var cards = document.querySelectorAll('.listing-card[data-obid]');
   var promises = [];
@@ -435,7 +403,6 @@ function extractListings() {
 
 function sortAndMark() {
   return sortByScore().then(function () {
-    try { addEnergyBadges(); } catch (e) {}
     return scoreAndMarkAll();
   });
 }
