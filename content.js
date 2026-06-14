@@ -716,6 +716,26 @@ if (isExposePage()) {
       clearInterval(pollInterval);
     }
   }, 30000);
+
+  var observerDebounce = null;
+  var observer = new MutationObserver(function () {
+    var allCards = document.querySelectorAll('.listing-card[data-obid]');
+    var hasUnscored = false;
+    for (var ci = 0; ci < allCards.length; ci++) {
+      if (!allCards[ci].querySelector('.house-scorer-score')) {
+        hasUnscored = true;
+        break;
+      }
+    }
+    if (hasUnscored) {
+      if (observerDebounce) clearTimeout(observerDebounce);
+      observerDebounce = setTimeout(function () {
+        sortAndMark();
+      }, 400);
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 window.houseScorer = { extractListings: extractListings, sortAndMark: sortAndMark, extractExposeData: extractExposeData, isExposePage: isExposePage };
