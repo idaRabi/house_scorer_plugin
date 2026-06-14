@@ -331,6 +331,42 @@ function addScoreBadge(card, serverResult) {
 
   var locBtn = buildLocationButton(serverResult.locationInfo);
 
+  var isVisited = serverResult.visited === true;
+  var visitedBtn = document.createElement('button');
+  visitedBtn.style.background = isVisited ? '#16a34a' : '#4b5563';
+  visitedBtn.style.color = '#fff';
+  visitedBtn.style.border = 'none';
+  visitedBtn.style.borderRadius = '4px';
+  visitedBtn.style.padding = '2px 6px';
+  visitedBtn.style.fontSize = '10px';
+  visitedBtn.style.cursor = 'pointer';
+  visitedBtn.style.lineHeight = '14px';
+  visitedBtn.textContent = isVisited ? '\u2713' : '\u25CB';
+
+  (function () {
+    var myVisited = isVisited;
+    var myId = serverResult.id;
+    visitedBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      e.preventDefault();
+      fetch(SCORE_SERVER + '/expose-score/' + myId + '/visited', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visited: !myVisited })
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Server error');
+        return res.json();
+      })
+      .then(function (data) {
+        myVisited = data.visited;
+        visitedBtn.style.background = myVisited ? '#16a34a' : '#4b5563';
+        visitedBtn.textContent = myVisited ? '\u2713' : '\u25CB';
+      })
+      .catch(function () {});
+    });
+  })();
+
   var badgeContainer = document.createElement('div');
   badgeContainer.className = 'house-scorer-badge-container';
   badgeContainer.style.position = 'absolute';
@@ -342,6 +378,7 @@ function addScoreBadge(card, serverResult) {
   badgeContainer.style.gap = '6px';
   badgeContainer.appendChild(badge);
   badgeContainer.appendChild(locBtn);
+  badgeContainer.appendChild(visitedBtn);
 
   card.appendChild(badgeContainer);
   card.appendChild(tooltip);
@@ -529,6 +566,8 @@ function addExposeScoreOverlay(result) {
 
   var score = result.score;
   var scoreColor = score > 0 ? '#2563eb' : '#9ca3af';
+  var isVisited = result.visited === true;
+  var exposeId = result.id;
 
   var expl = result.explanation || {};
   var explLines = '';
@@ -567,13 +606,37 @@ function addExposeScoreOverlay(result) {
   overlay.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
   overlay.style.maxWidth = '340px';
 
+  var visitedBtnId = 'hs-visited-btn-' + exposeId;
   overlay.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
       '<span style="background:' + scoreColor + ';color:#fff;border-radius:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;">' + score + '</span>' +
       '<b style="font-size:14px;">House Score</b>' +
+      '<button id="' + visitedBtnId + '" style="margin-left:auto;background:' + (isVisited ? '#16a34a' : '#4b5563') + ';color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;">' + (isVisited ? '\u2713 Visited' : 'Mark visited') + '</button>' +
     '</div>' + explLines + locSection;
 
   document.body.appendChild(overlay);
+
+  var visitedBtn = document.getElementById(visitedBtnId);
+  if (visitedBtn) {
+    visitedBtn.addEventListener('click', function () {
+      var newVisited = !isVisited;
+      fetch(SCORE_SERVER + '/expose-score/' + exposeId + '/visited', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visited: newVisited })
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Server error');
+        return res.json();
+      })
+      .then(function (data) {
+        isVisited = data.visited;
+        visitedBtn.style.background = isVisited ? '#16a34a' : '#4b5563';
+        visitedBtn.textContent = isVisited ? '\u2713 Visited' : 'Mark visited';
+      })
+      .catch(function () {});
+    });
+  }
 
   setTimeout(function () {
     overlay.style.opacity = '0.85';
