@@ -1,4 +1,29 @@
+var SCORE_SERVER = 'http://localhost:3001';
+var MAX_TABS = 15;
+var WINDOW_MINUTES = 5;
+var GAP_MS = 20000;
+
+function loadConfigFromPage(tab) {
+  return chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: function () {
+      var cfg = window.houseScorerConfig || {};
+      return {
+        maxTabsPerWindow: cfg.maxTabsPerWindow || 15,
+        tabWindowMinutes: cfg.tabWindowMinutes || 5,
+        tabOpenGapSeconds: cfg.tabOpenGapSeconds || 20
+      };
+    }
+  }).then(function (results) {
+    var c = results[0].result;
+    MAX_TABS = c.maxTabsPerWindow;
+    WINDOW_MINUTES = c.tabWindowMinutes;
+    GAP_MS = c.tabOpenGapSeconds * 1000;
+  });
+}
+
 var scanBtn = document.getElementById('scanBtn');
+var isRunning = false;
 
 function isExposeUrl(url) {
   return url && url.indexOf('/expose/') !== -1;
@@ -12,22 +37,25 @@ chrome.tabs.query({ active: true, currentWindow: true }).then(function (tabs) {
   }
 });
 
-scanBtn.addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+scanBtn.addEventListener('click', async function () {
+  if (isRunning) return;
+
+  var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  var tab = tabs[0];
   if (!tab) return;
 
   if (isExposeUrl(tab.url)) {
     try {
-      const results = await chrome.scripting.executeScript({
+      var results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: () => {
+        func: function () {
           if (window.houseScorer && typeof window.houseScorer.extractExposeData === 'function') {
             return window.houseScorer.extractExposeData();
           }
           return { error: 'Content script not loaded. Try refreshing the page.' };
         }
       });
-      const data = results[0].result;
+      var data = results[0].result;
       if (data.error) {
         document.getElementById('status').textContent = data.error;
         document.getElementById('results').innerHTML = '';
@@ -41,36 +69,118 @@ scanBtn.addEventListener('click', async () => {
     return;
   }
 
+  isRunning = true;
+  scanBtn.disabled = true;
+  scanBtn.textContent = 'Scanning...';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('status').textContent = 'Extracting listings...';
+
   try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => {
-        if (window.houseScorer) {
-          var sortPromise = Promise.resolve();
-          if (typeof window.houseScorer.sortAndMark === 'function') {
-            sortPromise = window.houseScorer.sortAndMark();
-          }
-          return sortPromise.then(function () {
-            if (typeof window.houseScorer.extractListings === 'function') {
-              return window.houseScorer.extractListings();
-            }
-            return { error: 'Content script not loaded. Try refreshing the page.' };
-          });
-        }
-        return Promise.resolve({ error: 'Content script not loaded. Try refreshing the page.' });
-      }
-    });
-
-    const data = results[0].result;
-    displayResults(data);
-
-    if (data && data.listings && data.listings.length > 0 && data.listings[0].link) {
-      chrome.tabs.create({ url: data.listings[0].link, active: false });
-    }
+    await loadConfigFromPage(tab);
+    await scanSearchPage(tab);
   } catch (err) {
     document.getElementById('status').textContent = 'Error: ' + err.message;
+  } finally {
+    isRunning = false;
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Scan Listings';
   }
 });
+
+async function scanSearchPage(searchTab) {
+  var listings = await extractListingLinks(searchTab);
+  if (!listings || listings.length === 0) {
+    document.getElementById('status').textContent = 'No listings found on this page.';
+    return;
+  }
+
+  var uncached = [];
+  var statusEl = document.getElementById('status');
+
+  statusEl.textContent = 'Checking cache for ' + listings.length + ' listings...';
+  for (var i = 0; i < listings.length; i++) {
+    try {
+      var res = await fetch(SCORE_SERVER + '/expose-score/' + listings[i].obid);
+      if (res.status === 404) {
+        uncached.push(listings[i]);
+      }
+    } catch (e) {
+      uncached.push(listings[i]);
+    }
+  }
+
+  var totalToOpen = Math.min(uncached.length, MAX_TABS);
+  if (totalToOpen === 0) {
+    statusEl.textContent = 'All ' + listings.length + ' listings already cached. Re-scoring...';
+    await resortAndExtract(searchTab);
+    return;
+  }
+
+  await resortAndExtract(searchTab);
+
+  statusEl.textContent = 'Found ' + listings.length + ' listings, ' + uncached.length + ' uncached. Sending ' + totalToOpen + ' to background worker...';
+
+  chrome.runtime.sendMessage({
+    type: 'openExposes',
+    listings: uncached.slice(0, totalToOpen),
+    config: {
+      maxTabsPerWindow: MAX_TABS,
+      tabWindowMinutes: WINDOW_MINUTES,
+      tabOpenGapSeconds: GAP_MS / 1000
+    },
+    searchTabId: searchTab.id
+  });
+
+  statusEl.textContent = 'Background opening ' + totalToOpen + ' pages (gap: ' + (GAP_MS / 1000) + 's). Popup can close \u2014 scores will auto-update.';
+
+  setTimeout(function () {
+    try { window.close(); } catch (e) {}
+  }, 3000);
+}
+
+async function resortAndExtract(tab) {
+  var results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: function () {
+      if (!window.houseScorer || typeof window.houseScorer.sortAndMark !== 'function') {
+        return Promise.resolve({ error: 'Content script not loaded.' });
+      }
+      return window.houseScorer.sortAndMark().then(function () {
+        if (typeof window.houseScorer.extractListings === 'function') {
+          return window.houseScorer.extractListings();
+        }
+        return { error: 'extractListings not available.' };
+      });
+    }
+  });
+
+  var data = results[0].result;
+  if (data && !data.error) {
+    displayResults(data);
+  } else if (data && data.error) {
+    document.getElementById('status').textContent = data.error;
+  }
+}
+
+async function extractListingLinks(tab) {
+  var results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: function () {
+      var cards = document.querySelectorAll('.listing-card[data-obid]');
+      var out = [];
+      cards.forEach(function (card) {
+        var obid = card.getAttribute('data-obid');
+        var linkEl = card.querySelector('[data-testid="attributeSection"]');
+        var link = linkEl ? linkEl.closest('a') : null;
+        if (obid && link && link.href) {
+          out.push({ obid: obid, link: link.href });
+        }
+      });
+      return out;
+    }
+  });
+  return results[0].result;
+}
 
 function displayExposeData(data) {
   var fields = [
@@ -106,16 +216,16 @@ function displayExposeData(data) {
   document.getElementById('results').innerHTML = html;
 }
 
-document.getElementById('clearBtn').addEventListener('click', () => {
+document.getElementById('clearBtn').addEventListener('click', function () {
   document.getElementById('results').innerHTML = '';
   document.getElementById('count').textContent = '';
   document.getElementById('status').textContent = 'Cleared.';
 });
 
 function displayResults(data) {
-  const countEl = document.getElementById('count');
-  const resultsEl = document.getElementById('results');
-  const statusEl = document.getElementById('status');
+  var countEl = document.getElementById('count');
+  var resultsEl = document.getElementById('results');
+  var statusEl = document.getElementById('status');
 
   if (data.error) {
     statusEl.textContent = data.error;
@@ -124,7 +234,7 @@ function displayResults(data) {
     return;
   }
 
-  statusEl.textContent = `Found ${data.count} listing(s) on the page.`;
+  statusEl.textContent = 'Found ' + data.count + ' listing(s) on the page.';
   countEl.textContent = '';
 
   if (data.count === 0) {
@@ -132,10 +242,10 @@ function displayResults(data) {
     return;
   }
 
-  let html = '';
-  data.listings.forEach(l => {
-    const isHighEff = l.energyClass === 'A' || l.energyClass === 'B';
-    const scoreColor = l.score > 0 ? '#2563eb' : '#9ca3af';
+  var html = '';
+  data.listings.forEach(function (l) {
+    var isHighEff = l.energyClass === 'A' || l.energyClass === 'B';
+    var scoreColor = l.score > 0 ? '#2563eb' : '#9ca3af';
     var explLines = '';
     if (l.explanation) {
       var expl = l.explanation;
@@ -151,7 +261,6 @@ function displayResults(data) {
       if (expl.commuteWork) explLines += '\n' + expl.commuteWork;
       if (expl.commuteWifeWork) explLines += '\n' + expl.commuteWifeWork;
     }
-    const breakdown = 'Score: ' + l.score + explLines;
     var locIndicator = '';
     var locTitle = '';
     if (l.locations) {
@@ -176,20 +285,20 @@ function displayResults(data) {
         locTitle = '\n\nLocation:\n' + locParts.join('\n');
       }
     }
-    html += `<div class="listing">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span title="${breakdown + locTitle}" style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">${l.score + locIndicator}</span>
-        <h3 style="margin:0;">${l.title || 'No title'}</h3>
-      </div>
-      ${l.matchedLocation ? `<div class="detail"><strong>Location match:</strong> ${l.matchedLocation}</div>` : ''}
-      ${l.badge ? `<div class="detail"><strong>Badge:</strong> ${l.badge}</div>` : ''}
-      ${l.address ? `<div class="detail"><strong>Address:</strong> ${l.address}</div>` : ''}
-      ${l.price ? `<div class="detail price">${l.price}</div>` : ''}
-      ${l.area ? `<div class="detail"><strong>Area:</strong> ${l.area}</div>` : ''}
-      ${l.rooms ? `<div class="detail"><strong>Rooms:</strong> ${l.rooms}</div>` : ''}
-      ${l.energyClass ? `<div class="detail"><strong>Energy:</strong> <span class="${isHighEff ? 'energy-high' : ''}">${l.energyClass}</span></div>` : ''}
-      ${l.link ? `<div class="detail"><a href="${l.link}" target="_blank">View listing</a></div>` : ''}
-    </div>`;
+    html += '<div class="listing">' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span title="Score: ' + l.score + explLines + locTitle + '" style="background:' + scoreColor + ';color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">' + l.score + locIndicator + '</span>' +
+        '<h3 style="margin:0;">' + (l.title || 'No title') + '</h3>' +
+      '</div>' +
+      (l.matchedLocation ? '<div class="detail"><strong>Location match:</strong> ' + l.matchedLocation + '</div>' : '') +
+      (l.badge ? '<div class="detail"><strong>Badge:</strong> ' + l.badge + '</div>' : '') +
+      (l.address ? '<div class="detail"><strong>Address:</strong> ' + l.address + '</div>' : '') +
+      (l.price ? '<div class="detail price">' + l.price + '</div>' : '') +
+      (l.area ? '<div class="detail"><strong>Area:</strong> ' + l.area + '</div>' : '') +
+      (l.rooms ? '<div class="detail"><strong>Rooms:</strong> ' + l.rooms + '</div>' : '') +
+      (l.energyClass ? '<div class="detail"><strong>Energy:</strong> <span class="' + (isHighEff ? 'energy-high' : '') + '">' + l.energyClass + '</span></div>' : '') +
+      (l.link ? '<div class="detail"><a href="' + l.link + '" target="_blank">View listing</a></div>' : '') +
+    '</div>';
   });
 
   resultsEl.innerHTML = html;

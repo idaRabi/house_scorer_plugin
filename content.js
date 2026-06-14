@@ -708,6 +708,23 @@ if (isExposePage()) {
   autoScoreExpose();
 } else {
   sortAndMark();
+  var pollCount = 0;
+  var pollInterval = setInterval(function () {
+    pollCount++;
+    sortAndMark();
+    if (pollCount >= 10) {
+      clearInterval(pollInterval);
+    }
+  }, 30000);
 }
 
 window.houseScorer = { extractListings: extractListings, sortAndMark: sortAndMark, extractExposeData: extractExposeData, isExposePage: isExposePage };
+
+chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+  if (msg.type === 'resortAndMark') {
+    sortAndMark().then(function () {
+      sendResponse({ done: true });
+    });
+    return true;
+  }
+});

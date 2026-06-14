@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "description": "Scores property listings on ImmobilienScout24 based on your criteria",
   "permissions": ["activeTab", "storage", "scripting", "tabs"],
-  "host_permissions": ["https://www.immobilienscout24.de/*"],
+  "host_permissions": ["https://www.immobilienscout24.de/*", "http://localhost:3001/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.immobilienscout24.de/Suche/*", "https://www.immobilienscout24.de/expose/*"],
