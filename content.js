@@ -31,7 +31,9 @@ function fetchScore(obid, data) {
     energyCertificateStatus: data.energyCertificateStatus || null,
     energyCertificateType: data.energyCertificateType || null,
     hasElevator: data.hasElevator || null,
-    area: data.area || null
+    area: data.area || null,
+    latitude: data.latitude || null,
+    longitude: data.longitude || null
   };
 
   return fetchCachedOrCompute(obid, function () {
@@ -221,6 +223,40 @@ function extractExposeData() {
     data.address = loc.street + ' ' + loc.houseNumber + ', ' + loc.zip + ' ' + loc.city;
   }
 
+  var heyImmoEl = document.querySelector('script[data-heyimmo-context="general"]');
+  if (heyImmoEl) {
+    try {
+      var hi = JSON.parse(heyImmoEl.textContent);
+      if (hi.addressAndLocation) {
+        var al = hi.addressAndLocation;
+        if (!data.address && al.street) {
+          data.address = al.street + ' ' + al.houseNumber + ', ' + al.postcode + ' ' + al.city;
+        }
+        if (data.latitude == null && typeof al.latitude === 'number') data.latitude = al.latitude;
+        if (data.longitude == null && typeof al.longitude === 'number') data.longitude = al.longitude;
+      }
+    } catch (e) {}
+  }
+
+  if (!data.address) {
+    var addressJson = document.querySelector('script[type="application/ld+json"]');
+    if (addressJson) {
+      try {
+        var ld = JSON.parse(addressJson.textContent);
+        var graph = ld && ld['@graph'];
+        if (graph) {
+          for (var i = 0; i < graph.length; i++) {
+            var addr = graph[i] && graph[i].address;
+            if (addr && addr.streetAddress) {
+              data.address = addr.streetAddress + ', ' + addr.postalCode + ' ' + addr.addressLocality;
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
   var roomsEl = document.querySelector('.is24qa-zimmer');
   if (roomsEl) data.rooms = roomsEl.textContent.trim();
 
@@ -286,7 +322,9 @@ function fetchExposeScore(data) {
     energyCertificateStatus: data.energyCertificateStatus,
     energyCertificateType: data.energyCertificateType,
     hasElevator: data.hasElevator || null,
-    area: data.area
+    area: data.area,
+    latitude: data.latitude || null,
+    longitude: data.longitude || null
   };
 
   return fetchCachedOrCompute(data.exposeId, function () {
