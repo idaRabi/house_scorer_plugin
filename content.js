@@ -1,31 +1,48 @@
 var SCORE_SERVER = 'http://localhost:3001';
 
-function fetchScore(obid, data) {
-  return fetch(SCORE_SERVER + '/score/' + obid, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      address: data.address,
-      rooms: data.rooms,
-      energyCertificate: data.energyCertificate,
-      floor: data.floor || null,
-      maintenanceFee: data.maintenanceFee || null,
-      constructionYear: data.constructionYear || null,
-      condition: data.condition || null,
-      heatingType: data.heatingType || null,
-      primaryEnergySource: data.primaryEnergySource || null,
-      energyCertificateStatus: data.energyCertificateStatus || null,
-      energyCertificateType: data.energyCertificateType || null,
-      hasElevator: data.hasElevator || null,
-      area: data.area || null
+function fetchCachedOrCompute(id, postFn) {
+  return fetch(SCORE_SERVER + '/expose-score/' + id)
+    .then(function (res) {
+      if (res.ok) return res.json();
+      if (res.status === 404) return postFn();
+      throw new Error('Server error: ' + res.status);
     })
-  })
-  .then(function (res) {
-    if (!res.ok) throw new Error('Server error: ' + res.status);
-    return res.json();
-  })
-  .catch(function () {
-    return { id: obid, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, explanation: {} };
+    .catch(function (err) {
+      if (err.message && err.message.indexOf('Server error') !== -1) {
+        return { id: id, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, explanation: {} };
+      }
+      return postFn().catch(function () {
+        return { id: id, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, explanation: {} };
+      });
+    });
+}
+
+function fetchScore(obid, data) {
+  var postData = {
+    address: data.address,
+    rooms: data.rooms,
+    energyCertificate: data.energyCertificate,
+    floor: data.floor || null,
+    maintenanceFee: data.maintenanceFee || null,
+    constructionYear: data.constructionYear || null,
+    condition: data.condition || null,
+    heatingType: data.heatingType || null,
+    primaryEnergySource: data.primaryEnergySource || null,
+    energyCertificateStatus: data.energyCertificateStatus || null,
+    energyCertificateType: data.energyCertificateType || null,
+    hasElevator: data.hasElevator || null,
+    area: data.area || null
+  };
+
+  return fetchCachedOrCompute(obid, function () {
+    return fetch(SCORE_SERVER + '/score/' + obid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(postData)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Server error: ' + res.status);
+      return res.json();
+    });
   });
 }
 
@@ -288,31 +305,31 @@ function extractExposeData() {
 }
 
 function fetchExposeScore(data) {
-  return fetch(SCORE_SERVER + '/expose-score/' + data.exposeId, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      address: data.address,
-      rooms: data.rooms,
-      energyCertificate: data.energyCertificate,
-      floor: data.floor,
-      maintenanceFee: data.maintenanceFee,
-      constructionYear: data.constructionYear,
-      condition: data.condition,
-      heatingType: data.heatingType,
-      primaryEnergySource: data.primaryEnergySource,
-      energyCertificateStatus: data.energyCertificateStatus,
-      energyCertificateType: data.energyCertificateType,
-      hasElevator: data.hasElevator || null,
-      area: data.area
-    })
-  })
-  .then(function (res) {
-    if (!res.ok) throw new Error('Server error: ' + res.status);
-    return res.json();
-  })
-  .catch(function () {
-    return { id: data.exposeId, score: 0, breakdown: { location: 0, energy: 0, rooms: 0 }, matchedLocation: null, input: data };
+  var postData = {
+    address: data.address,
+    rooms: data.rooms,
+    energyCertificate: data.energyCertificate,
+    floor: data.floor,
+    maintenanceFee: data.maintenanceFee,
+    constructionYear: data.constructionYear,
+    condition: data.condition,
+    heatingType: data.heatingType,
+    primaryEnergySource: data.primaryEnergySource,
+    energyCertificateStatus: data.energyCertificateStatus,
+    energyCertificateType: data.energyCertificateType,
+    hasElevator: data.hasElevator || null,
+    area: data.area
+  };
+
+  return fetchCachedOrCompute(data.exposeId, function () {
+    return fetch(SCORE_SERVER + '/expose-score/' + data.exposeId, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(postData)
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Server error: ' + res.status);
+      return res.json();
+    });
   });
 }
 
