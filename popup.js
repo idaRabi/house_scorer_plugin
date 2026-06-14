@@ -146,6 +146,10 @@ function displayResults(data) {
       if (expl.construction) explLines += '\n' + expl.construction;
       if (expl.heatingType) explLines += '\n' + expl.heatingType;
       if (expl.maintenanceFee) explLines += '\n' + expl.maintenanceFee;
+      if (expl.supermarket) explLines += '\n' + expl.supermarket;
+      if (expl.transit) explLines += '\n' + expl.transit;
+      if (expl.commuteWork) explLines += '\n' + expl.commuteWork;
+      if (expl.commuteWifeWork) explLines += '\n' + expl.commuteWifeWork;
     }
     const breakdown = 'Score: ' + l.score + explLines;
     var locIndicator = '';

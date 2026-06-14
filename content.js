@@ -312,6 +312,10 @@ function addScoreBadge(card, serverResult) {
   if (expl.construction) explLines += '<div>' + expl.construction + '</div>';
   if (expl.heatingType) explLines += '<div>' + expl.heatingType + '</div>';
   if (expl.maintenanceFee) explLines += '<div>' + expl.maintenanceFee + '</div>';
+  if (expl.supermarket) explLines += '<div>' + expl.supermarket + '</div>';
+  if (expl.transit) explLines += '<div>' + expl.transit + '</div>';
+  if (expl.commuteWork) explLines += '<div>' + expl.commuteWork + '</div>';
+  if (expl.commuteWifeWork) explLines += '<div>' + expl.commuteWifeWork + '</div>';
 
   tooltip.innerHTML =
     '<div style="margin-bottom:4px;"><b>Score: ' + score + '</b></div>' + explLines;
@@ -535,6 +539,10 @@ function addExposeScoreOverlay(result) {
   if (expl.construction) explLines += '<div>' + expl.construction + '</div>';
   if (expl.heatingType) explLines += '<div>' + expl.heatingType + '</div>';
   if (expl.maintenanceFee) explLines += '<div>' + expl.maintenanceFee + '</div>';
+  if (expl.supermarket) explLines += '<div>' + expl.supermarket + '</div>';
+  if (expl.transit) explLines += '<div>' + expl.transit + '</div>';
+  if (expl.commuteWork) explLines += '<div>' + expl.commuteWork + '</div>';
+  if (expl.commuteWifeWork) explLines += '<div>' + expl.commuteWifeWork + '</div>';
 
   var locHtml = buildLocationTooltip(result.locationInfo);
   var locSection = '';
