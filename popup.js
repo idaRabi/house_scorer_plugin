@@ -148,9 +148,33 @@ function displayResults(data) {
       if (expl.maintenanceFee) explLines += '\n' + expl.maintenanceFee;
     }
     const breakdown = 'Score: ' + l.score + explLines;
+    var locIndicator = '';
+    var locTitle = '';
+    if (l.locations) {
+      var loc = l.locations;
+      var locParts = [];
+      if (loc.transitStations && loc.transitStations.nearest && loc.transitStations.nearest.name) {
+        locParts.push('Transit: ' + loc.transitStations.nearest.name);
+      }
+      var marketTotal = 0;
+      if (loc.supermarkets) {
+        var mks = Object.keys(loc.supermarkets);
+        for (var mi = 0; mi < mks.length; mi++) {
+          var sm = loc.supermarkets[mks[mi]];
+          marketTotal += (sm.within500m && sm.within500m.count) || 0;
+        }
+      }
+      if (marketTotal > 0) {
+        locParts.push('Supermarkets: ' + marketTotal + ' within 500m');
+      }
+      if (locParts.length > 0) {
+        locIndicator = ' \uD83D\uDCCD';
+        locTitle = '\n\nLocation:\n' + locParts.join('\n');
+      }
+    }
     html += `<div class="listing">
       <div style="display:flex;align-items:center;gap:8px;">
-        <span title="${breakdown}" style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">${l.score}</span>
+        <span title="${breakdown + locTitle}" style="background:${scoreColor};color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:bold;line-height:18px;cursor:pointer;">${l.score + locIndicator}</span>
         <h3 style="margin:0;">${l.title || 'No title'}</h3>
       </div>
       ${l.matchedLocation ? `<div class="detail"><strong>Location match:</strong> ${l.matchedLocation}</div>` : ''}

@@ -91,20 +91,185 @@ function extractListingData(card) {
   };
 }
 
+function classifyTransit(station) {
+  if (!station || !station.types) return 'other';
+  var t = station.types;
+  for (var i = 0; i < t.length; i++) {
+    if (t[i] === 'subway_station') return 'U-Bahn';
+    if (t[i] === 'train_station') return 'S-Bahn';
+    if (t[i] === 'tram_stop' || t[i] === 'light_rail_station') return 'Tram';
+    if (t[i] === 'bus_station' || t[i] === 'bus_stop') return 'Bus';
+  }
+  return 'other';
+}
+
+function collectTransitLines(stations) {
+  var lines = {};
+  if (!stations) return lines;
+  for (var i = 0; i < stations.length; i++) {
+    var tl = stations[i].transitLines;
+    if (tl && tl.length) {
+      for (var j = 0; j < tl.length; j++) {
+        var ln = tl[j].line || tl[j];
+        if (ln) lines[ln] = true;
+      }
+    }
+  }
+  return Object.keys(lines).sort(function (a, b) {
+    var na = parseInt(a), nb = parseInt(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+}
+
+function buildTransitCounts(stations) {
+  var counts = { 'U-Bahn': 0, 'S-Bahn': 0, 'Tram': 0, 'Bus': 0, other: 0 };
+  if (!stations) return counts;
+  for (var i = 0; i < stations.length; i++) {
+    var cat = classifyTransit(stations[i]);
+    counts[cat] = (counts[cat] || 0) + 1;
+  }
+  return counts;
+}
+
+function formatTransitCounts(counts) {
+  var parts = [];
+  if (counts['U-Bahn'] > 0) parts.push(counts['U-Bahn'] + ' U-Bahn');
+  if (counts['S-Bahn'] > 0) parts.push(counts['S-Bahn'] + ' S-Bahn');
+  if (counts['Tram'] > 0) parts.push(counts['Tram'] + ' Tram');
+  if (counts['Bus'] > 0) parts.push(counts['Bus'] + ' Bus');
+  if (counts.other > 0) parts.push(counts.other + ' other');
+  return parts.join(', ');
+}
+
+function buildLocationTooltip(loc) {
+  var html = '';
+  if (!loc) return html;
+
+  if (loc.commute) {
+    html += '<div style="margin-bottom:6px;"><b>Commute</b></div>';
+    var commuteKeys = Object.keys(loc.commute);
+    for (var c = 0; c < commuteKeys.length; c++) {
+      var ck = commuteKeys[c];
+      var cm = loc.commute[ck];
+      if (cm && cm.durationText) {
+        html += '<div>' + ck.replace(/_/g, ' ') + ': ' + cm.durationText + ' (' + cm.distanceText + ')</div>';
+        if (cm.transitLines && cm.transitLines.length) {
+          for (var tl = 0; tl < cm.transitLines.length; tl++) {
+            var tln = cm.transitLines[tl];
+            html += '<div style="padding-left:12px;font-size:11px;color:#aaa;">' + tln.line + ': ' + tln.departure + ' \u2192 ' + tln.arrival + '</div>';
+          }
+        }
+      }
+    }
+    html += '<div style="margin-bottom:6px;"></div>';
+  }
+
+  if (loc.transitStations) {
+    html += '<div style="margin-bottom:4px;"><b>Transit</b></div>';
+    var ts = loc.transitStations;
+    if (ts.within200m && ts.within200m.count > 0) {
+      var c200 = buildTransitCounts(ts.within200m.stations);
+      var l200 = collectTransitLines(ts.within200m.stations);
+      html += '<div>200m: ' + ts.within200m.count + ' (' + formatTransitCounts(c200) + ')' + (l200.length > 0 ? ' [' + l200.join(', ') + ']' : '') + '</div>';
+    }
+    if (ts.within500m && ts.within500m.count > 0) {
+      var c500 = buildTransitCounts(ts.within500m.stations);
+      var l500 = collectTransitLines(ts.within500m.stations);
+      html += '<div>500m: ' + ts.within500m.count + ' (' + formatTransitCounts(c500) + ')' + (l500.length > 0 ? ' [' + l500.join(', ') + ']' : '') + '</div>';
+    }
+    if (ts.within1000m && ts.within1000m.count > 0) {
+      var c1000 = buildTransitCounts(ts.within1000m.stations);
+      var l1000 = collectTransitLines(ts.within1000m.stations);
+      html += '<div>1km: ' + ts.within1000m.count + ' (' + formatTransitCounts(c1000) + ')' + (l1000.length > 0 ? ' [' + l1000.join(', ') + ']' : '') + '</div>';
+    }
+    if (ts.nearest && ts.nearest.name) {
+      html += '<div>Nearest: ' + ts.nearest.name + '</div>';
+    }
+    html += '<div style="margin-bottom:6px;"></div>';
+  }
+
+  if (loc.supermarkets) {
+    html += '<div style="margin-bottom:4px;"><b>Supermarkets</b> (within 1km)</div>';
+    var marketKeys = Object.keys(loc.supermarkets);
+    for (var m = 0; m < marketKeys.length; m++) {
+      var mk = marketKeys[m];
+      var sm = loc.supermarkets[mk];
+      var count1000 = (sm.within1000m && sm.within1000m.count) || 0;
+      var count500 = (sm.within500m && sm.within500m.count) || 0;
+      if (count1000 > 0) {
+        html += '<div>' + mk + ': ' + count500 + ' within 500m, ' + count1000 + ' within 1km</div>';
+      }
+    }
+  }
+
+  return html;
+}
+
+function buildLocationButton(locations) {
+  var wrapper = document.createElement('div');
+  wrapper.style.position = 'relative';
+  wrapper.style.display = 'inline-block';
+
+  var btn = document.createElement('span');
+  btn.textContent = '\uD83D\uDCCD';
+  btn.style.cursor = 'pointer';
+  btn.style.fontSize = '14px';
+  btn.style.lineHeight = '28px';
+  btn.style.padding = '0 4px';
+
+  var tip = document.createElement('div');
+  tip.style.display = 'none';
+  tip.style.position = 'fixed';
+  tip.style.zIndex = '99999';
+  tip.style.background = '#1f2937';
+  tip.style.color = '#f9fafb';
+  tip.style.padding = '8px 12px';
+  tip.style.borderRadius = '6px';
+  tip.style.fontSize = '12px';
+  tip.style.fontFamily = 'Arial, sans-serif';
+  tip.style.lineHeight = '1.5';
+  tip.style.whiteSpace = 'nowrap';
+  tip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+
+  var locHtml = buildLocationTooltip(locations);
+  if (!locHtml) {
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'default';
+  }
+  tip.innerHTML = locHtml || '<div>No location data available</div>';
+
+  btn.addEventListener('mouseenter', function () {
+    tip.style.display = 'block';
+    var btnRect = btn.getBoundingClientRect();
+    var tipWidth = tip.offsetWidth || 260;
+    var left = btnRect.left + btnRect.width / 2 - tipWidth / 2;
+    if (left < 8) left = 8;
+    if (left + tipWidth > window.innerWidth - 8) left = window.innerWidth - tipWidth - 8;
+    tip.style.left = left + 'px';
+    tip.style.top = (btnRect.bottom + 6) + 'px';
+  });
+  btn.addEventListener('mouseleave', function () {
+    tip.style.display = 'none';
+  });
+
+  wrapper.appendChild(btn);
+  wrapper.appendChild(tip);
+  return wrapper;
+}
+
 function addScoreBadge(card, serverResult) {
   var existing = card.querySelector('.house-scorer-score');
   if (existing) existing.remove();
   var existingTip = card.querySelector('.house-scorer-tooltip');
   if (existingTip) existingTip.remove();
+  var existingContainer = card.querySelector('.house-scorer-badge-container');
+  if (existingContainer) existingContainer.remove();
 
   var score = serverResult.score;
 
   var badge = document.createElement('div');
   badge.className = 'house-scorer-score';
-  badge.style.position = 'absolute';
-  badge.style.top = '8px';
-  badge.style.left = '8px';
-  badge.style.zIndex = '11';
   badge.style.minWidth = '28px';
   badge.style.height = '28px';
   badge.style.borderRadius = '14px';
@@ -159,7 +324,22 @@ function addScoreBadge(card, serverResult) {
   });
 
   card.style.position = 'relative';
-  card.appendChild(badge);
+
+  var locBtn = buildLocationButton(serverResult.locationInfo);
+
+  var badgeContainer = document.createElement('div');
+  badgeContainer.className = 'house-scorer-badge-container';
+  badgeContainer.style.position = 'absolute';
+  badgeContainer.style.top = '8px';
+  badgeContainer.style.left = '8px';
+  badgeContainer.style.zIndex = '11';
+  badgeContainer.style.display = 'flex';
+  badgeContainer.style.alignItems = 'center';
+  badgeContainer.style.gap = '6px';
+  badgeContainer.appendChild(badge);
+  badgeContainer.appendChild(locBtn);
+
+  card.appendChild(badgeContainer);
   card.appendChild(tooltip);
 }
 
@@ -356,6 +536,13 @@ function addExposeScoreOverlay(result) {
   if (expl.heatingType) explLines += '<div>' + expl.heatingType + '</div>';
   if (expl.maintenanceFee) explLines += '<div>' + expl.maintenanceFee + '</div>';
 
+  var locHtml = buildLocationTooltip(result.locationInfo);
+  var locSection = '';
+  if (locHtml) {
+    locSection = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.15);font-size:12px;">' +
+      '<div style="margin-bottom:4px;">\uD83D\uDCCD <b>Location</b></div>' + locHtml + '</div>';
+  }
+
   var overlay = document.createElement('div');
   overlay.className = 'house-scorer-expose-overlay';
   overlay.style.position = 'fixed';
@@ -370,13 +557,13 @@ function addExposeScoreOverlay(result) {
   overlay.style.fontSize = '13px';
   overlay.style.lineHeight = '1.6';
   overlay.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
-  overlay.style.maxWidth = '300px';
+  overlay.style.maxWidth = '340px';
 
   overlay.innerHTML =
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
       '<span style="background:' + scoreColor + ';color:#fff;border-radius:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;">' + score + '</span>' +
       '<b style="font-size:14px;">House Score</b>' +
-    '</div>' + explLines;
+    '</div>' + explLines + locSection;
 
   document.body.appendChild(overlay);
 
@@ -428,6 +615,7 @@ function extractListings() {
         energyScore: result.breakdown.energy,
         roomScore: result.breakdown.rooms,
         explanation: result.explanation,
+        locations: result.locationInfo,
         link: data.link
       };
     });
