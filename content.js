@@ -439,7 +439,12 @@ function extractExposeData() {
   var pathParts = window.location.pathname.split('/');
   data.exposeId = pathParts[pathParts.length - 1];
 
-  if (window.IS24 && window.IS24.expose && window.IS24.expose.locationAddress) {
+  var addressTextEl = document.querySelector('.address-text');
+  if (addressTextEl) {
+    data.address = addressTextEl.textContent.trim();
+  }
+
+  if (!data.address && window.IS24 && window.IS24.expose && window.IS24.expose.locationAddress) {
     var loc = window.IS24.expose.locationAddress;
     data.address = loc.street + ' ' + loc.houseNumber + ', ' + loc.zip + ' ' + loc.city;
   }
